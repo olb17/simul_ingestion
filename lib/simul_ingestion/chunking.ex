@@ -10,7 +10,7 @@ defmodule SimulIngestion.Chunking do
 
   def init(args) do
     state = %{chunks_per_sec: Keyword.fetch!(args, :chunks_per_sec)}
-    {:producer_consumer, state, subscribe_to: [{SimulIngestion.User, max_demand: 5}]}
+    {:producer_consumer, state, subscribe_to: [{SimulIngestion.User, max_demand: 1}]}
   end
 
   def handle_events(events, _from, state) do

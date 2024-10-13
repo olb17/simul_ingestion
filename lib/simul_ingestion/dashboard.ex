@@ -2,6 +2,8 @@ defmodule SimulIngestion.Dashboard do
   alias SimulIngestion.Dashboard
   use GenServer
 
+  @speed_measure_sample 1_000
+
   def start_link(_args) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
@@ -27,10 +29,10 @@ defmodule SimulIngestion.Dashboard do
   end
 
   defstruct books: %{},
-            chunking_speed: 0.0,
+            chunking_speed: [],
             chunking: %{},
-            embedding_speed: 0.0,
-            embedding: %{},
+            embedding_speed: [],
+            embedding: [],
             indexing_speed: 0.0,
             indexing: %{}
 
@@ -100,7 +102,30 @@ defmodule SimulIngestion.Dashboard do
         Map.put(acc, book_name, new_book)
       end)
 
-    {:noreply, %{state | books: new_books}}
+    embedding = [time | state.embedding]
+
+    if state.embedding_speed == [] do
+      {:noreply,
+       %{state | books: new_books, embedding: embedding, embedding_speed: [{time, 0.0}]}}
+    else
+      last_speed_time = state.embedding_speed |> hd |> elem(0)
+
+      {new_embedding, new_speed} =
+        if DateTime.diff(time, last_speed_time, :millisecond) > @speed_measure_sample do
+          new_embedding =
+            embedding
+            |> Enum.filter(fn t -> DateTime.after?(t, last_speed_time) end)
+
+          speed = length(new_embedding)
+          new_speed = [{time, speed} | state.embedding_speed]
+          {new_embedding, new_speed}
+        else
+          {embedding, state.embedding_speed}
+        end
+
+      {:noreply,
+       %{state | books: new_books, embedding: new_embedding, embedding_speed: new_speed}}
+    end
   end
 
   def handle_cast({:indexing_book, chunks, index_time, time}, state) do
@@ -144,7 +169,7 @@ defmodule SimulIngestion.Dashboard do
       |> Enum.map(fn {_book_name, book} -> book.processing_time end)
       |> Enum.frequencies()
 
-    reply = %{freq: freq}
+    reply = %{freq: freq, embedding_speed: state.embedding_speed}
     {:reply, reply, state}
   end
 end

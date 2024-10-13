@@ -3,6 +3,8 @@ defmodule SimulIngestion.EmbeddingService do
   use GenServer
   # Note: use queue instead of list
 
+  @ticker 1_000
+
   def start_link(args) do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
@@ -13,49 +15,55 @@ defmodule SimulIngestion.EmbeddingService do
 
   @impl true
   def init(args) do
+    max_batch_per_min = Keyword.fetch!(args, :max_batch_per_min) |> dbg
+    embedding_time_ms = Keyword.fetch!(args, :embedding_time_ms) |> dbg
+
     state = %{
-      max: Keyword.fetch!(args, :max_batch_per_min),
-      cur: Keyword.fetch!(args, :max_batch_per_min),
+      max: max_batch_per_min,
+      cur: max_batch_per_min,
       waiting: [],
-      embedding_time_ms: Keyword.fetch!(args, :embedding_time_ms)
+      embedding_time_ms: embedding_time_ms
     }
 
-    Process.send_after(self(), :tick, 1000)
+    Process.send_after(self(), :tick, @ticker)
     {:ok, state}
   end
 
   @impl true
   def handle_info(:tick, state) do
-    # Ticking every second
+    # Ticking every @ticker
     %{max: max, cur: cur, waiting: waiting, embedding_time_ms: embedding_time_ms} = state
+
+    new_cur = cur + max / 60 * @ticker / 1_000
 
     reply =
       cond do
-        max / 60 + cur >= 1 and length(waiting) > 0 ->
-          {chunks, from} = hd(waiting)
-          # TODO: BUG it should process more than 1 event at a time
-          # IO.puts("embedding #{length(chunks)} chunks")
+        new_cur >= 1 and length(waiting) > 0 ->
+          nb_tasks = Enum.min([floor(new_cur), length(waiting)])
+          {processing, new_waiting} = Enum.split(waiting, nb_tasks)
 
-          Task.start_link(fn ->
-            Dashboard.embedding_chunks(chunks, embedding_time_ms)
-            Process.sleep(embedding_time_ms)
-            GenServer.reply(from, :ok)
+          Enum.each(processing, fn {chunks, from} ->
+            Task.start_link(fn ->
+              Dashboard.embedding_chunks(chunks, embedding_time_ms)
+              Process.sleep(embedding_time_ms)
+              GenServer.reply(from, :ok)
+            end)
           end)
 
-          {:noreply, %{state | cur: cur - 1 + max / 60, waiting: tl(waiting)}}
+          {:noreply, %{state | cur: cur - nb_tasks, waiting: new_waiting}}
 
-        max / 60 + cur < max ->
-          {:noreply, %{state | cur: cur + max / 60}}
+        new_cur < max ->
+          {:noreply, %{state | cur: new_cur}}
 
         max == cur ->
           {:noreply, state}
 
-        max / 60 + cur >= max ->
+        new_cur > max ->
           IO.puts("Embedding service at max capacity")
           {:noreply, %{state | cur: max}}
       end
 
-    Process.send_after(self(), :tick, 1_000)
+    Process.send_after(self(), :tick, @ticker)
     reply
   end
 

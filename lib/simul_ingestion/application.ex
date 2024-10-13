@@ -8,16 +8,14 @@ defmodule SimulIngestion.Application do
   @impl true
   def start(_type, _args) do
     experiment_param = [
-      chunking_nb: 5,
-      embedding_nb: 100,
+      chunking_nb: 2,
+      embedding_nb: 1,
       max_batch_per_min: 400,
       embedding_time_ms: 300,
       chunking_per_sec: 6_000
     ]
 
     children = [
-      # Starts a worker by calling: SimulIngestion.Worker.start_link(arg)
-      # {SimulIngestion.Worker, arg}
       # {SimulIngestion.Pipeline, experiment_param}
     ]
 

@@ -168,8 +168,22 @@ defmodule SimulIngestion.Dashboard do
       state.books
       |> Enum.map(fn {_book_name, book} -> book.processing_time end)
       |> Enum.frequencies()
+      |> Enum.filter(fn {freq, _} -> freq end)
 
-    reply = %{freq: freq, embedding_speed: state.embedding_speed}
+    total_doc = map_size(state.books)
+
+    being_processed_docs =
+      state.books |> Enum.filter(fn {_name, book} -> book.chunking_time end) |> length()
+
+    finished_docs =
+      state.books |> Enum.filter(fn {_name, book} -> book.processing_time end) |> length()
+
+    reply = %{
+      freq: freq,
+      embedding_speed: state.embedding_speed,
+      docs: {total_doc, being_processed_docs, finished_docs}
+    }
+
     {:reply, reply, state}
   end
 end

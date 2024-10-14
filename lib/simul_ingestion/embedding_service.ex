@@ -21,7 +21,7 @@ defmodule SimulIngestion.EmbeddingService do
     state = %{
       max: max_batch_per_min,
       cur: max_batch_per_min,
-      waiting: [],
+      waiting: :queue.new(),
       embedding_time_ms: embedding_time_ms
     }
 
@@ -38,11 +38,11 @@ defmodule SimulIngestion.EmbeddingService do
 
     reply =
       cond do
-        new_cur >= 1 and length(waiting) > 0 ->
-          nb_tasks = Enum.min([floor(new_cur), length(waiting)])
-          {processing, new_waiting} = Enum.split(waiting, nb_tasks)
+        new_cur >= 1 and :queue.len(waiting) > 0 ->
+          nb_tasks = Enum.min([floor(new_cur), :queue.len(waiting)])
+          {processing, new_waiting} = :queue.split(nb_tasks, waiting)
 
-          Enum.each(processing, fn {chunks, from} ->
+          Enum.each(:queue.to_list(processing), fn {chunks, from} ->
             Task.start_link(fn ->
               Dashboard.embedding_chunks(chunks, embedding_time_ms)
               Process.sleep(embedding_time_ms)
@@ -82,7 +82,7 @@ defmodule SimulIngestion.EmbeddingService do
 
       {:noreply, %{state | cur: cur - 1}}
     else
-      {:noreply, %{state | waiting: [{chunks, from} | waiting]}}
+      {:noreply, %{state | waiting: :queue.in({chunks, from}, waiting)}}
     end
   end
 end

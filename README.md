@@ -1,6 +1,6 @@
 # SimulIngestion
 
-**TODO: Add description**
+Simulation of a gentstage flow to ingest documents into an indexer (chunking + embedding) with rate limiting and back pressure
 
 ## Installation
 
